@@ -227,6 +227,7 @@ public class ProgramScriptService {
             return Response.ok(JsonHelper.mapOf(
                 "success", true,
                 "saved_count", 0,
+                "open_program_count", 0,
                 "programs", List.of(),
                 "errors", List.of(),
                 "message", "No open programs to save"
@@ -253,6 +254,19 @@ public class ProgramScriptService {
                         continue;
                     }
                     info.put("path", df.getPathname());
+                    // A DomainFile that is not in a writable project is a proxy
+                    // (no on-disk location) \u2014 calling save() on it throws the
+                    // cryptic "Location does not exist for a save operation!".
+                    // Surface a specific message so callers know to re-load
+                    // with an active project open.
+                    if (!df.isInWritableProject()) {
+                        info.put("error",
+                            "Program is not attached to a writable project "
+                            + "(transient DomainFileProxy); re-load it with a "
+                            + "project open before saving.");
+                        errors.get().add(info);
+                        continue;
+                    }
                     df.save(new ConsoleTaskMonitor());
                     saved.get().add(info);
                 } catch (Throwable e) {
@@ -277,6 +291,7 @@ public class ProgramScriptService {
         return Response.ok(JsonHelper.mapOf(
             "success", errors.get().isEmpty(),
             "saved_count", saved.get().size(),
+            "open_program_count", programs.length,
             "programs", saved.get(),
             "errors", errors.get()
         ));
@@ -1147,6 +1162,10 @@ public class ProgramScriptService {
         // Track whether we copied the script (for cleanup)
         final File[] copiedScript = {null};
 
+        // Holder so the catch block can surface OSGi build/activate output
+        // captured into scriptWriter before a failure.
+        final StringWriter[] scriptWriterHolder = {null};
+
         // Get the PluginTool for script state (GUI mode only)
         final PluginTool pluginTool = getToolFromProvider();
 
@@ -1236,6 +1255,7 @@ public class ProgramScriptService {
                     // Create script instance
                     StringWriter scriptWriter = new StringWriter();
                     PrintWriter scriptPrintWriter = new PrintWriter(scriptWriter);
+                    scriptWriterHolder[0] = scriptWriter;
 
                     ghidra.app.script.GhidraScript script = provider.getScriptInstance(scriptFile, scriptPrintWriter);
                     if (script == null) {
@@ -1287,6 +1307,20 @@ public class ProgramScriptService {
                     PrintWriter pw = new PrintWriter(sw);
                     e.printStackTrace(pw);
                     resultMsg.append("Stack trace:\n").append(sw.toString()).append("\n");
+
+                    // Surface any build/activate output that was captured into the
+                    // script writer before the failure (e.g. OSGi/Felix compile
+                    // errors from JavaScriptProvider.activateAll()).
+                    try {
+                        StringWriter sw2 = scriptWriterHolder[0];
+                        if (sw2 != null) {
+                            String capturedBuild = sw2.toString();
+                            if (!capturedBuild.isEmpty()) {
+                                resultMsg.append("--- BUILD/ACTIVATE OUTPUT ---\n")
+                                        .append(capturedBuild).append("\n");
+                            }
+                        }
+                    } catch (Throwable ignore) { /* scriptWriter may be unavailable */ }
 
                     Msg.error(this, "Script execution failed: " + scriptPath, e);
                 } finally {

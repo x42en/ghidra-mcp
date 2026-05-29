@@ -1,7 +1,7 @@
 {
   "version": "5.12.0",
   "description": "GhidraMCP REST API Endpoint Specification",
-  "total_endpoints": 245,
+  "total_endpoints": 248,
   "categories": {
     "listing": "List program data",
     "getter": "Get specific data",
@@ -212,6 +212,16 @@
         "program"
       ],
       "description": "Apply function documentation"
+    },
+    {
+      "path": "/archive_project",
+      "method": "POST",
+      "category": "headless",
+      "params": [
+        "output_dir",
+        "output_name"
+      ],
+      "description": "Archive the currently open project to a Ghidra-native .gar file. The result can be restored into any Ghidra GUI via File → Restore Project, or back into a headless instance via /restore_project. Captures the entire project (all programs, folders, settings, version-control metadata) — unlike /export_program which ships a single program as .gzf. Output is written to `output_dir/output_name` (defaults: /data/exports and `<project>.gar`). Refuses to overwrite an existing file. Callers should /save_all_programs first to flush pending in-memory edits."
     },
     {
       "path": "/archive_ingest_function",
@@ -1009,6 +1019,17 @@
       "description": "Save and exit Ghidra"
     },
     {
+      "path": "/export_program",
+      "method": "POST",
+      "category": "headless",
+      "params": [
+        "program_name",
+        "output_dir",
+        "output_name"
+      ],
+      "description": "Export an open or project-resident program to a Ghidra Zip File (.gzf). Looks up the program in the open-programs map first (so it works on file-loaded programs without a project), then falls back to the open project's DomainFile."
+    },
+    {
       "path": "/extract_iocs_with_context",
       "method": "GET",
       "category": "analysis",
@@ -1553,6 +1574,18 @@
       "description": "Import a binary file from disk into the current Ghidra project and open it. For raw firmware binaries, specify language (e.g. 'ARM:LE:32:Cortex') and optionally compiler_spec (e.g. 'default')."
     },
     {
+      "path": "/import_program",
+      "method": "POST",
+      "category": "headless",
+      "params": [
+        "gzf_path",
+        "target_folder",
+        "target_name",
+        "overwrite"
+      ],
+      "description": "Import a Ghidra Zip File (.gzf) into the currently open project as a new DomainFile under target_folder (default '/'). Refuses to overwrite a program that is currently loaded in memory."
+    },
+    {
       "path": "/inspect_memory_content",
       "method": "GET",
       "category": "analysis",
@@ -1818,9 +1851,11 @@
       "method": "POST",
       "category": "headless",
       "params": [
-        "file"
+        "file",
+        "language",
+        "compiler_spec"
       ],
-      "description": "Load a binary file into the headless server for analysis"
+      "description": "Load a binary file into the headless server for analysis. For raw firmware (no recognizable header), pass `language` (e.g. 'ARM:LE:32:Cortex') and optionally `compiler_spec` (e.g. 'default'); the file is then imported as raw binary with the requested processor. When `language` is omitted, the loader auto-detects the format."
     },
     {
       "path": "/load_program_from_project",
@@ -2086,6 +2121,17 @@
         "program"
       ],
       "description": "Batch rename variables"
+    },
+    {
+      "path": "/restore_project",
+      "method": "POST",
+      "category": "headless",
+      "params": [
+        "gar_path",
+        "parent_dir",
+        "project_name"
+      ],
+      "description": "Restore a Ghidra .gar archive into a fresh on-disk project at `parent_dir/project_name`. Closes any currently-open project first. The restored project is NOT re-opened automatically; follow up with /open_project so owner reset and project bookkeeping run via the same code path as a user-driven open. Fails loudly if the destination project already exists."
     },
     {
       "path": "/run_analysis",

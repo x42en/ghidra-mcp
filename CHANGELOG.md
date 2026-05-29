@@ -4,6 +4,60 @@ Complete version history for the Ghidra MCP Server project.
 
 ---
 
+## Unreleased
+
+### Added
+
+- **Headless: GZF round-trip for single programs.** Two new endpoints
+  let callers pack/unpack a Ghidra Zip File (`.gzf`) without going
+  through a full project tarball:
+  - `POST /export_program` — accepts `{program, output_dir?, output_name?}`
+    and writes `<output_dir>/<output_name>.gzf`. Looks up the program
+    first in the open-programs map (so it works on programs loaded via
+    `/load_program` without a project) and falls back to the open
+    project's `DomainFile.packFile(...)` when not in memory.
+    Implementation uses `Program.saveToPackedFile(File, TaskMonitor)`
+    on the `DomainObject` interface — no cast to
+    `DomainObjectAdapterDB` (which drags `db.util.ErrorHandler` off
+    the headless classpath).
+  - `POST /import_program` — accepts `{gzf_path, target_folder?,
+    target_name?, overwrite?}` and creates a new `DomainFile` under
+    the given folder of the open project via
+    `DomainFolder.createFile(name, packedFile, monitor)`. Refuses to
+    overwrite a live in-memory program (would raise
+    `FileInUseException` from Ghidra).
+
+
+
+- **Headless: `/run_ghidra_script` and `/run_script_inline` crashed
+  with `NullPointerException`** at
+  `JavaScriptProvider.getScriptInstance()` because
+  `GhidraScriptUtil.bundleHost` is never initialized outside the GUI
+  (in GUI mode `GhidraScriptMgrPlugin` does it). The headless server
+  now calls `GhidraScriptUtil.acquireBundleHostReference()` at startup
+  and `releaseBundleHostReference()` at shutdown when
+  `GHIDRA_MCP_ALLOW_SCRIPTS` is enabled (via
+  `SecurityConfig.areScriptsAllowed()`), then ensures the user script
+  directory is registered as an enabled `GhidraSourceBundle` so
+  `JavaScriptProvider.loadClass()` can resolve compiled scripts.
+  Gated on the existing opt-in flag to keep the ~hundreds-of-ms Felix
+  OSGi startup cost off the default path.
+
+- **Docker runtime image switched from `eclipse-temurin:21-jre` to
+  `eclipse-temurin:21-jdk`.** Ghidra's `GhidraScript` OSGi loader
+  invokes `javax.tools.ToolProvider.getSystemJavaCompiler()` to
+  compile `.java` scripts on the fly; that returns `null` on a JRE,
+  surfacing as `AssertException: Can't find java compiler` for any
+  Java script run inside the container.
+
+- **`ProgramScriptService` now surfaces OSGi build/activate output**
+  when script execution fails. The `StringWriter` capturing
+  `JavaScriptProvider.activateAll()` output is appended to the error
+  response under `--- BUILD/ACTIVATE OUTPUT ---`, so Felix compile
+  errors are visible to the caller instead of being silently dropped.
+
+---
+
 ## v5.12.0 - 2026-05-23 (community-driven tools: /get_current_selection + GUI /open_project)
 
 Minor release. Two new endpoints filed/scoped by community feedback
