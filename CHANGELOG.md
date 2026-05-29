@@ -6,7 +6,28 @@ Complete version history for the Ghidra MCP Server project.
 
 ## Unreleased
 
-### Fixed
+### Added
+
+- **Headless: GZF round-trip for single programs.** Two new endpoints
+  let callers pack/unpack a Ghidra Zip File (`.gzf`) without going
+  through a full project tarball:
+  - `POST /export_program` — accepts `{program, output_dir?, output_name?}`
+    and writes `<output_dir>/<output_name>.gzf`. Looks up the program
+    first in the open-programs map (so it works on programs loaded via
+    `/load_program` without a project) and falls back to the open
+    project's `DomainFile.packFile(...)` when not in memory.
+    Implementation uses `Program.saveToPackedFile(File, TaskMonitor)`
+    on the `DomainObject` interface — no cast to
+    `DomainObjectAdapterDB` (which drags `db.util.ErrorHandler` off
+    the headless classpath).
+  - `POST /import_program` — accepts `{gzf_path, target_folder?,
+    target_name?, overwrite?}` and creates a new `DomainFile` under
+    the given folder of the open project via
+    `DomainFolder.createFile(name, packedFile, monitor)`. Refuses to
+    overwrite a live in-memory program (would raise
+    `FileInUseException` from Ghidra).
+
+
 
 - **Headless: `/run_ghidra_script` and `/run_script_inline` crashed
   with `NullPointerException`** at
